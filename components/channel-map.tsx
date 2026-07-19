@@ -1,5 +1,14 @@
-type ChannelMapProps = {
+import { formatMiles } from "@/lib/progress";
+
+type SwimmerProgress = {
+  name: string;
+  distanceMiles: number;
   progressPercent: number;
+  accentClassName: string;
+};
+
+type ChannelMapProps = {
+  swimmers: SwimmerProgress[];
 };
 
 function Swimmer() {
@@ -30,10 +39,7 @@ function Swimmer() {
   );
 }
 
-export function ChannelMap({ progressPercent }: ChannelMapProps) {
-  const clampedProgress = Math.min(100, Math.max(0, progressPercent));
-  const left = `calc(${clampedProgress}% * 0.76 + 12%)`;
-
+export function ChannelMap({ swimmers }: ChannelMapProps) {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -43,7 +49,9 @@ export function ChannelMap({ progressPercent }: ChannelMapProps) {
           </p>
           <h2 className="mt-2 text-2xl font-bold text-slate-900">England to France</h2>
         </div>
-        <p className="text-sm text-slate-500">Two swimmers move together with the total distance.</p>
+        <p className="text-sm text-slate-500">
+          Each swimmer is positioned using their converted mile total.
+        </p>
       </div>
 
       <div className="relative overflow-hidden rounded-[1.75rem] bg-[linear-gradient(180deg,#dff4ff_0%,#8ad0f4_100%)] p-4 sm:p-6">
@@ -78,14 +86,37 @@ export function ChannelMap({ progressPercent }: ChannelMapProps) {
           </svg>
 
           <div className="absolute inset-0">
-            <div style={{ left }} className="absolute top-[45%]">
-              <Swimmer />
-            </div>
-            <div style={{ left }} className="absolute top-[59%]">
-              <Swimmer />
-            </div>
+            {swimmers.map((swimmer, index) => {
+              const left = `calc(${Math.min(100, Math.max(0, swimmer.progressPercent))}% * 0.76 + 12%)`;
+              const top = index === 0 ? "45%" : "59%";
+
+              return (
+                <div key={swimmer.name} style={{ left, top }} className="absolute">
+                  <Swimmer />
+                </div>
+              );
+            })}
           </div>
         </div>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {swimmers.map((swimmer) => (
+          <div
+            key={swimmer.name}
+            className="rounded-2xl border border-sky-100 bg-sky-50/60 p-4"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-semibold text-slate-900">{swimmer.name}</p>
+              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${swimmer.accentClassName}`}>
+                {swimmer.progressPercent.toFixed(0)}%
+              </span>
+            </div>
+            <p className="mt-2 text-sm text-slate-600">
+              {formatMiles(swimmer.distanceMiles)} miles logged
+            </p>
+          </div>
+        ))}
       </div>
     </div>
   );

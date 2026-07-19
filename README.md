@@ -8,6 +8,7 @@ A small Next.js + Supabase site for tracking Karen and Elaine's English Channel 
 - Hidden update form at `/update-xyz123`
 - Supabase-backed swim log
 - JustGiving total fetched through `/api/justgiving`
+- Update entries capture swimmer, date, metres/lengths, and pool length, then convert to miles
 - Ready for Vercel deployment
 
 ## Environment variables
@@ -24,17 +25,21 @@ cp .env.example .env.local
 
 ## Supabase setup
 
-1. Create a new Supabase project.
-2. In the Supabase SQL editor, run the migration in `supabase/migrations/20260719195000_init_charity_swim.sql`.
-3. Insert a single row into `public.settings`, for example:
+1. Go to [supabase.com](https://supabase.com) and create a new project.
+2. In the Supabase dashboard, open **SQL Editor**.
+3. Paste in the contents of `supabase/migrations/20260719195000_init_charity_swim.sql` and run it.
+4. Still in **SQL Editor**, insert one settings row:
 
 ```sql
 insert into public.settings (start_date, target_miles, target_money, justgiving_page_slug)
 values ('2026-07-01', 22, 220, 'karen-elaine-22-miles');
 ```
 
-4. Copy the project URL and anon key into your environment variables.
-5. If you prefer, you can set `JUSTGIVING_PAGE_SLUG=karen-elaine-22-miles` instead of storing the slug in `public.settings`.
+5. In Supabase, go to **Project Settings** → **Data API**.
+6. Copy:
+   - **Project URL** → use as `NEXT_PUBLIC_SUPABASE_URL`
+   - **anon public key** → use as `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+7. Optional: if you would rather keep the JustGiving page slug in Vercel instead of the database row, set `JUSTGIVING_PAGE_SLUG=karen-elaine-22-miles`.
 
 ## Local development
 
@@ -48,9 +53,27 @@ Then open `http://localhost:3000`.
 ## Deploying to Vercel
 
 1. Push the repository to GitHub.
-2. Import the repository into Vercel.
-3. Add the same environment variables from `.env.local` in the Vercel project settings.
-4. Deploy.
+2. Go to [vercel.com](https://vercel.com) and choose **Add New Project**.
+3. Import this GitHub repository.
+4. When Vercel asks for environment variables, add:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `JUSTGIVING_PAGE_SLUG` = `karen-elaine-22-miles` (optional if the slug is already in `public.settings`)
+5. Leave the framework as **Next.js**.
+6. Click **Deploy**.
+7. After deploy, open the site homepage and confirm the public page loads.
+8. Then open the hidden update form directly at `/update-xyz123`.
+
+## What to do after deploy
+
+1. Visit the public homepage and confirm the swim progress page loads.
+2. Visit `/update-xyz123`.
+3. Submit a test entry for Karen or Elaine.
+4. Check that:
+   - the form accepts date + metres/lengths + pool length
+   - the saved entry updates the total distance
+   - the public page moves the swimmer icons using the converted mile totals
+5. If the money raised area shows unavailable, confirm the JustGiving slug is set either in `public.settings` or in Vercel environment variables.
 
 ## Update form URL
 

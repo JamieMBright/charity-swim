@@ -13,7 +13,10 @@ type ProgressData = {
   targetMoney: number;
   startDateDisplay: string;
   daysElapsed: number;
-  justGivingPageSlug: string | null;
+  swimmerMiles: {
+    karen: number;
+    elaine: number;
+  };
 };
 
 function getSupabaseConfig() {
@@ -55,7 +58,10 @@ export async function getProgressData(): Promise<ProgressData> {
       targetMoney: DEFAULT_TARGET_MONEY,
       startDateDisplay: formatDate(defaultStartDate),
       daysElapsed: 0,
-      justGivingPageSlug: process.env.JUSTGIVING_PAGE_SLUG ?? null,
+      swimmerMiles: {
+        karen: 0,
+        elaine: 0,
+      },
     };
   }
 
@@ -64,7 +70,7 @@ export async function getProgressData(): Promise<ProgressData> {
       .from("settings")
       .select("start_date,target_miles,target_money,justgiving_page_slug")
       .limit(1),
-    supabase.from("swim_log").select("distance_miles"),
+    supabase.from("swim_log").select("distance_miles,swimmer_name"),
   ]);
 
   const settings = settingsRows?.[0];
@@ -75,6 +81,22 @@ export async function getProgressData(): Promise<ProgressData> {
     (total, row) => total + (toNumber(row.distance_miles) ?? 0),
     0,
   );
+  const swimmerMiles = (swimRows ?? []).reduce(
+    (totals, row) => {
+      const swimmerName = normalizeSwimmerName(row.swimmer_name);
+      const distanceMiles = toNumber(row.distance_miles) ?? 0;
+
+      if (swimmerName) {
+        totals[swimmerName] += distanceMiles;
+      }
+
+      return totals;
+    },
+    {
+      karen: 0,
+      elaine: 0,
+    },
+  );
 
   return {
     totalMiles,
@@ -82,17 +104,20 @@ export async function getProgressData(): Promise<ProgressData> {
     targetMoney,
     startDateDisplay: formatDate(startDate),
     daysElapsed: getDaysElapsed(startDate),
-    justGivingPageSlug:
-      settings?.justgiving_page_slug ?? process.env.JUSTGIVING_PAGE_SLUG ?? null,
+    swimmerMiles,
   };
 }
 
-export function convertToMiles(distance: number, unit: "miles" | "lengths") {
-  if (unit === "miles") {
-    return roundTo(distance, 4);
+export function convertToMiles(
+  distance: number,
+  unit: "metres" | "lengths",
+  poolLengthMetres = POOL_LENGTH_METRES,
+) {
+  if (unit === "metres") {
+    return roundTo(distance / METRES_PER_MILE, 5);
   }
 
-  return roundTo((distance * POOL_LENGTH_METRES) / METRES_PER_MILE, 5);
+  return roundTo((distance * poolLengthMetres) / METRES_PER_MILE, 5);
 }
 
 export function getProgressPercent(current: number, target: number) {
@@ -151,6 +176,20 @@ function toNumber(value: number | string | null | undefined) {
   if (typeof value === "string") {
     const numericValue = Number(value);
     return Number.isFinite(numericValue) ? numericValue : null;
+  }
+
+  return null;
+}
+
+function normalizeSwimmerName(value: unknown): "karen" | "elaine" | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalizedValue = value.trim().toLowerCase();
+
+  if (normalizedValue === "karen" || normalizedValue === "elaine") {
+    return normalizedValue;
   }
 
   return null;

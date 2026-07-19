@@ -31,7 +31,8 @@ export default async function UpdatePage() {
             Log today&apos;s swim
           </h1>
           <p className="mt-3 text-slate-600">
-            Add either miles or pool lengths. Lengths are converted using a 25m pool.
+            Choose Karen or Elaine, then add metres or lengths. Length entries are
+            converted using the selected pool length and saved in miles for the visual.
           </p>
         </section>
 

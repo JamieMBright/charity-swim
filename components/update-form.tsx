@@ -17,7 +17,8 @@ type UpdateFormProps = {
   targetMiles: number;
 };
 
-type Unit = "miles" | "lengths";
+type Unit = "metres" | "lengths";
+type Swimmer = "karen" | "elaine";
 
 export function UpdateForm({
   defaultDate,
@@ -26,19 +27,24 @@ export function UpdateForm({
 }: UpdateFormProps) {
   const supabase = useMemo(() => createSupabaseClient(), []);
   const [distance, setDistance] = useState("");
-  const [unit, setUnit] = useState<Unit>("miles");
+  const [unit, setUnit] = useState<Unit>("metres");
+  const [poolLength, setPoolLength] = useState<"25" | "50">("25");
+  const [swimmer, setSwimmer] = useState<Swimmer>("karen");
   const [date, setDate] = useState(defaultDate);
   const [currentTotal, setCurrentTotal] = useState(initialTotalMiles);
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const numericDistance = Number(distance);
+  const convertedMiles =
+    Number.isFinite(numericDistance) && numericDistance > 0
+      ? convertToMiles(numericDistance, unit, Number(poolLength))
+      : 0;
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setMessage(null);
     setErrorMessage(null);
-
-    const numericDistance = Number(distance);
 
     if (!supabase) {
       setErrorMessage("Add your Supabase URL and anon key before using this form.");
@@ -52,12 +58,13 @@ export function UpdateForm({
 
     setIsSubmitting(true);
 
-    const distanceMiles = convertToMiles(numericDistance, unit);
+    const distanceMiles = convertToMiles(numericDistance, unit, Number(poolLength));
 
     try {
       const { error } = await supabase.from("swim_log").insert({
         date,
         distance_miles: distanceMiles,
+        swimmer_name: swimmer,
       });
 
       if (error) {
@@ -80,7 +87,7 @@ export function UpdateForm({
       setCurrentTotal(nextTotal);
       setDistance("");
       setMessage(
-        `Saved ${numericDistance} ${unit} for ${date}. Total progress is now ${formatMiles(nextTotal)} miles.`,
+        `Saved ${capitalize(swimmer)}'s ${numericDistance} ${unit} for ${date}. Total progress is now ${formatMiles(nextTotal)} miles.`,
       );
     } catch {
       setErrorMessage("The swim could not be saved. Please check the table policies and try again.");
@@ -105,7 +112,19 @@ export function UpdateForm({
       </div>
 
       <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
-        <div className="grid gap-5 sm:grid-cols-[1fr_180px]">
+        <label className="block space-y-2">
+          <span className="text-sm font-medium text-slate-700">Who</span>
+          <select
+            value={swimmer}
+            onChange={(event) => setSwimmer(event.target.value as Swimmer)}
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-400"
+          >
+            <option value="karen">Karen</option>
+            <option value="elaine">Elaine</option>
+          </select>
+        </label>
+
+        <div className="grid gap-5 sm:grid-cols-[1fr_180px_180px]">
           <label className="space-y-2">
             <span className="text-sm font-medium text-slate-700">Distance</span>
             <input
@@ -115,7 +134,7 @@ export function UpdateForm({
               value={distance}
               onChange={(event) => setDistance(event.target.value)}
               className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-400"
-              placeholder={unit === "miles" ? "0.50" : "40"}
+              placeholder={unit === "metres" ? "500" : "40"}
               required
             />
           </label>
@@ -127,8 +146,21 @@ export function UpdateForm({
               onChange={(event) => setUnit(event.target.value as Unit)}
               className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-400"
             >
-              <option value="miles">Miles</option>
-              <option value="lengths">Lengths (25m pool)</option>
+              <option value="metres">Metres</option>
+              <option value="lengths">Lengths</option>
+            </select>
+          </label>
+
+          <label className="space-y-2">
+            <span className="text-sm font-medium text-slate-700">Pool length</span>
+            <select
+              value={poolLength}
+              onChange={(event) => setPoolLength(event.target.value as "25" | "50")}
+              disabled={unit !== "lengths"}
+              className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-400 disabled:bg-slate-100 disabled:text-slate-400"
+            >
+              <option value="25">25m</option>
+              <option value="50">50m</option>
             </select>
           </label>
         </div>
@@ -144,6 +176,10 @@ export function UpdateForm({
           />
         </label>
 
+        <p className="rounded-2xl bg-sky-50 px-4 py-3 text-sm text-slate-600">
+          This entry will count as <span className="font-semibold text-slate-900">{formatMiles(convertedMiles)} miles</span> on the public visual.
+        </p>
+
         <button
           type="submit"
           disabled={isSubmitting}
@@ -157,4 +193,8 @@ export function UpdateForm({
       {errorMessage ? <p className="mt-4 text-sm text-rose-700">{errorMessage}</p> : null}
     </section>
   );
+}
+
+function capitalize(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }

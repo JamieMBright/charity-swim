@@ -8,6 +8,14 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   const progress = await getProgressData();
   const distancePercent = getProgressPercent(progress.totalMiles, progress.targetMiles);
+  const karenPercent = getProgressPercent(
+    progress.swimmerMiles.karen,
+    progress.targetMiles,
+  );
+  const elainePercent = getProgressPercent(
+    progress.swimmerMiles.elaine,
+    progress.targetMiles,
+  );
 
   return (
     <main className="min-h-screen bg-[linear-gradient(180deg,#f5fbff_0%,#edf8ff_100%)] px-4 py-8 text-foreground sm:px-6 lg:px-8">
@@ -52,7 +60,22 @@ export default async function Home() {
         </section>
 
         <section className="rounded-[2rem] bg-white p-4 shadow-[0_24px_80px_rgba(34,91,124,0.14)] sm:p-6">
-          <ChannelMap progressPercent={distancePercent} />
+          <ChannelMap
+            swimmers={[
+              {
+                name: "Karen",
+                distanceMiles: progress.swimmerMiles.karen,
+                progressPercent: karenPercent,
+                accentClassName: "bg-rose-100 text-rose-700",
+              },
+              {
+                name: "Elaine",
+                distanceMiles: progress.swimmerMiles.elaine,
+                progressPercent: elainePercent,
+                accentClassName: "bg-amber-100 text-amber-700",
+              },
+            ]}
+          />
         </section>
 
         <section className="grid gap-6 lg:grid-cols-[1fr_0.95fr]">
