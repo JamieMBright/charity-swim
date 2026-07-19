@@ -5,7 +5,7 @@ A small Next.js + Supabase site for tracking Karen and Elaine's English Channel 
 ## Features
 
 - Public progress page at `/`
-- Hidden update form at `/update-xyz123`
+- Hidden update form at `/form`
 - Supabase-backed swim log
 - JustGiving total fetched through `/api/justgiving`
 - Update entries capture swimmer, date, metres/lengths, and pool length, then convert to miles
@@ -62,12 +62,12 @@ Then open `http://localhost:3000`.
 5. Leave the framework as **Next.js**.
 6. Click **Deploy**.
 7. After deploy, open the site homepage and confirm the public page loads.
-8. Then open the hidden update form directly at `/update-xyz123`.
+8. Then open the hidden update form directly at `/form`.
 
 ## What to do after deploy
 
 1. Visit the public homepage and confirm the swim progress page loads.
-2. Visit `/update-xyz123`.
+2. Visit `/form`.
 3. Submit a test entry for Karen or Elaine.
 4. Check that:
    - the form accepts date + metres/lengths + pool length
@@ -80,7 +80,7 @@ Then open `http://localhost:3000`.
 The hidden update form lives at:
 
 ```text
-/update-xyz123
+/form
 ```
 
 It is intentionally not linked from the public page and is excluded from indexing.

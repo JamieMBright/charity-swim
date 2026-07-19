@@ -2,7 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export const DEFAULT_TARGET_MILES = 22;
 export const DEFAULT_TARGET_MONEY = 220;
-export const UPDATE_SLUG = "update-xyz123";
+export const UPDATE_SLUG = "form";
 
 const POOL_LENGTH_METRES = 25;
 const METRES_PER_MILE = 1609.344;
