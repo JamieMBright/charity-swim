@@ -38,7 +38,20 @@ try {
   });
   const page = await context.newPage();
 
-  await page.goto(pageUrl, { waitUntil: "domcontentloaded", timeout: 60_000 });
+  await gotoWithRetry(page, pageUrl);
+
+  // JustGiving is a client-rendered app, so the total is not present at
+  // `domcontentloaded`. Give the network a chance to settle and wait for a
+  // monetary figure to appear before scraping. Both waits are best-effort so a
+  // slow-but-present page still falls through to extraction.
+  await page
+    .waitForLoadState("networkidle", { timeout: 30_000 })
+    .catch(() => {});
+  await page
+    .waitForFunction(() => /£\s*[\d,]/.test(document.body?.innerText ?? ""), {
+      timeout: 30_000,
+    })
+    .catch(() => {});
 
   const totalRaised = await extractTotalRaised(page);
 
@@ -57,6 +70,27 @@ try {
 }
 
 // ---------------------------------------------------------------------------
+
+async function gotoWithRetry(page, url, attempts = 3) {
+  let lastError;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      return;
+    } catch (error) {
+      lastError = error;
+      console.warn(
+        `Navigation attempt ${attempt}/${attempts} failed: ${error.message}`,
+      );
+      if (attempt < attempts) {
+        await page.waitForTimeout(2_000 * attempt);
+      }
+    }
+  }
+
+  throw lastError;
+}
 
 async function extractTotalRaised(page) {
   // Strategy 1: parse Next.js embedded page data
@@ -78,12 +112,20 @@ async function extractTotalRaised(page) {
         "totalRaisedOnline",
         "amountRaised",
         "raisedAmount",
+        "donationsTotal",
         "grandTotalRaisedExcludingGiftAid",
       ];
 
       for (const key of keys) {
         if (key in node) {
-          const v = Number(node[key]);
+          const raw = node[key];
+          // The figure is sometimes wrapped in an object such as
+          // `{ value: 166, currencyCode: "GBP" }`.
+          const candidate =
+            raw && typeof raw === "object"
+              ? (raw.value ?? raw.amount ?? raw.total)
+              : raw;
+          const v = Number(candidate);
           if (Number.isFinite(v) && v >= 0) return v;
         }
       }
@@ -135,12 +177,33 @@ async function extractTotalRaised(page) {
 
   // Strategy 3: search the full page text for a "£X,XXX raised" pattern
   const pageText = await page.evaluate(() => document.body.innerText);
-  const match = pageText.match(/£\s*([\d,]+(?:\.\d{1,2})?)\s*raised/i);
-  if (match) {
-    const v = Number(match[1].replace(/,/g, ""));
-    if (Number.isFinite(v) && v >= 0) {
-      console.log("Extracted via page text pattern");
-      return v;
+  const fromText = parseRaisedFromText(pageText);
+  if (fromText !== null) {
+    console.log("Extracted via page text pattern");
+    return fromText;
+  }
+
+  return null;
+}
+
+export function parseRaisedFromText(text) {
+  if (typeof text !== "string") return null;
+
+  // JustGiving renders the figure either as "£1,234 raised" or, in some
+  // layouts, as "raised of £2,000". Try the amount-then-"raised" order first so
+  // we do not accidentally pick up the target amount.
+  const patterns = [
+    /£\s*([\d,]+(?:\.\d{1,2})?)\s*raised/i,
+    /raised[^£\d]*£\s*([\d,]+(?:\.\d{1,2})?)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (match) {
+      const v = Number(match[1].replace(/,/g, ""));
+      if (Number.isFinite(v) && v >= 0) {
+        return v;
+      }
     }
   }
 
@@ -152,12 +215,20 @@ async function writeToSupabase(totalRaised) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("settings")
-    .update({ justgiving_total_raised: totalRaised });
+    .update({ justgiving_total_raised: totalRaised })
+    .not("justgiving_page_slug", "is", null)
+    .select("justgiving_page_slug");
 
   if (error) {
     throw new Error(`Supabase update failed: ${error.message}`);
+  }
+
+  if (!data || data.length === 0) {
+    throw new Error(
+      "Supabase update matched no rows; ensure a settings row exists.",
+    );
   }
 }
 
