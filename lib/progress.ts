@@ -47,8 +47,7 @@ export function createSupabaseClient() {
 }
 
 export async function getProgressData(): Promise<ProgressData> {
-  const today = new Date();
-  const defaultStartDate = today.toISOString().slice(0, 10);
+  const defaultStartDate = "2026-07-20";
   const supabase = createSupabaseClient();
 
   if (!supabase) {
