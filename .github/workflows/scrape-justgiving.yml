@@ -1,0 +1,32 @@
+name: Scrape JustGiving
+
+on:
+  schedule:
+    # Every 10 minutes
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Playwright and Supabase client
+        run: npm install playwright @supabase/supabase-js
+
+      - name: Install Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Scrape JustGiving and update Supabase
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JUSTGIVING_PAGE_SLUG: ${{ vars.JUSTGIVING_PAGE_SLUG || 'karen-elaine-22-miles' }}
+        run: node scripts/scrape-justgiving.mjs
