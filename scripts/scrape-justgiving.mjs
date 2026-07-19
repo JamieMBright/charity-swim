@@ -12,7 +12,7 @@
 import { chromium } from "playwright";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_URL = sanitiseSupabaseUrl(process.env.SUPABASE_URL);
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const PAGE_SLUG =
   process.env.JUSTGIVING_PAGE_SLUG ?? "karen-elaine-22-miles";
@@ -276,11 +276,16 @@ async function fetchCurrentTotal() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("settings")
     .select("justgiving_total_raised")
     .not("justgiving_page_slug", "is", null)
     .limit(1);
+
+  if (error) {
+    console.warn(`Could not read previous total from Supabase: ${error.message}`);
+    return null;
+  }
 
   const raw = data?.[0]?.justgiving_total_raised;
   if (raw === null || raw === undefined) return null;
@@ -324,6 +329,24 @@ async function writeToSupabase(totalRaised) {
       "Supabase update matched no rows; ensure a settings row exists.",
     );
   }
+}
+
+function sanitiseSupabaseUrl(value) {
+  if (!value) {
+    return value;
+  }
+
+  // supabase-js appends `/rest/v1` itself, so the configured URL must be the
+  // bare project URL. Trailing slashes or an accidental `/rest/v1` suffix
+  // produce an extra path segment and PostgREST rejects it with
+  // "Invalid path specified in request URL" (PGRST125).
+  let cleaned = value.trim().replace(/\/+$/, "");
+
+  if (/\/rest\/v1$/.test(cleaned)) {
+    cleaned = cleaned.replace(/\/rest\/v1$/, "").replace(/\/+$/, "");
+  }
+
+  return cleaned;
 }
 
 function normaliseSlug(value) {
