@@ -1,13 +1,15 @@
 import { createSupabaseClient } from "./progress";
 
 const FIVE_MINUTES = 300_000;
+const HARDCODED_PAGE_SLUG = "karen-elaine-22-miles";
+const HARDCODED_FALLBACK_TOTAL = 166;
 
 let cache: {
   totalRaised: number | null;
   updatedAt: number;
   pageSlug: string | null;
 } = {
-  totalRaised: null,
+  totalRaised: HARDCODED_FALLBACK_TOTAL,
   updatedAt: 0,
   pageSlug: null,
 };
@@ -17,7 +19,7 @@ export async function getJustGivingTotal() {
 
   if (!pageSlug) {
     return {
-      totalRaised: cache.totalRaised,
+      totalRaised: cache.totalRaised ?? HARDCODED_FALLBACK_TOTAL,
       stale: true,
     };
   }
@@ -69,7 +71,7 @@ export async function getJustGivingTotal() {
     };
   } catch {
     return {
-      totalRaised: cache.totalRaised,
+      totalRaised: cache.totalRaised ?? HARDCODED_FALLBACK_TOTAL,
       stale: true,
     };
   }
@@ -91,7 +93,10 @@ async function getPageSlug() {
     .select("justgiving_page_slug")
     .limit(1);
 
-  return normalizePageSlug(data?.[0]?.justgiving_page_slug ?? null);
+  return (
+    normalizePageSlug(data?.[0]?.justgiving_page_slug ?? null) ??
+    HARDCODED_PAGE_SLUG
+  );
 }
 
 function normalizePageSlug(value: string | null) {

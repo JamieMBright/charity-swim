@@ -32,7 +32,7 @@ cp .env.example .env.local
 
 ```sql
 insert into public.settings (start_date, target_miles, target_money, justgiving_page_slug)
-values ('2026-07-01', 22, 220, 'karen-elaine-22-miles');
+values ('2026-07-20', 22, 220, 'karen-elaine-22-miles');
 ```
 
 5. In Supabase, go to **Project Settings** → **Data API**.
