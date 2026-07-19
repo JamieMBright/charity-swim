@@ -128,7 +128,7 @@ export function getProgressPercent(current: number, target: number) {
 }
 
 export function formatMiles(value: number) {
-  return value.toFixed(1);
+  return value.toFixed(2);
 }
 
 export function formatCurrency(value: number) {
