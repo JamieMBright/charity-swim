@@ -24,6 +24,8 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   process.exit(1);
 }
 
+const SANITY_CHECK_MULTIPLIER = 10;
+
 const slug = normaliseSlug(PAGE_SLUG);
 const pageUrl = `https://www.justgiving.com/page/${encodeURIComponent(slug)}`;
 
@@ -53,6 +55,11 @@ try {
     })
     .catch(() => {});
 
+  const previousTotal = await fetchCurrentTotal();
+  console.log(
+    `Previous stored total: ${previousTotal !== null ? `£${previousTotal}` : "(none)"}`,
+  );
+
   const totalRaised = await extractTotalRaised(page);
 
   if (totalRaised === null) {
@@ -61,6 +68,14 @@ try {
   }
 
   console.log(`Total raised: £${totalRaised}`);
+
+  const sanityError = checkSanity(totalRaised, previousTotal);
+  if (sanityError) {
+    console.error(
+      `Sanity check failed — ${sanityError}. Keeping last known value (£${previousTotal ?? "unknown"}).`,
+    );
+    process.exit(1);
+  }
 
   await writeToSupabase(totalRaised);
 
@@ -142,11 +157,50 @@ async function extractTotalRaised(page) {
   });
 
   if (fromNextData !== null) {
-    console.log("Extracted via __NEXT_DATA__");
+    console.log(`Extracted via __NEXT_DATA__: parsed £${fromNextData}`);
     return fromNextData;
   }
 
-  // Strategy 2: look for a monetary amount in prominent headings/spans
+  // Strategy 2: find the element containing exactly "Total" (standalone, case-
+  // sensitive) then look in its parent container for a sibling element whose
+  // text contains a £ amount.
+  const fromTotalLabel = await page.evaluate(() => {
+    const walker = document.createTreeWalker(
+      document.body,
+      NodeFilter.SHOW_ELEMENT,
+    );
+    let node;
+    while ((node = walker.nextNode())) {
+      // Only match leaf-ish elements whose own trimmed text is exactly "Total"
+      if (node.children.length > 2) continue;
+      if ((node.textContent?.trim() ?? "") !== "Total") continue;
+
+      // Search siblings of this element, then siblings of its parent
+      const candidates = [node, node.parentElement].filter(Boolean);
+      for (const base of candidates) {
+        let sibling = base.nextElementSibling;
+        while (sibling) {
+          const sibText = sibling.textContent?.trim() ?? "";
+          const match = sibText.match(/£([\d,]+\.?\d*)/);
+          if (match) {
+            return { text: sibText, value: match[1] };
+          }
+          sibling = sibling.nextElementSibling;
+        }
+      }
+    }
+    return null;
+  });
+
+  if (fromTotalLabel !== null) {
+    const v = parseFloat(fromTotalLabel.value.replace(/,/g, ""));
+    console.log(
+      `Extracted via "Total" label DOM traversal: matched text "${fromTotalLabel.text}", parsed £${v}`,
+    );
+    if (Number.isFinite(v) && v >= 0) return v;
+  }
+
+  // Strategy 3: look for a monetary amount in prominent headings/spans
   const fromDom = await page.evaluate(() => {
     const selectors = [
       "[data-testid*='raised']",
@@ -171,15 +225,16 @@ async function extractTotalRaised(page) {
   });
 
   if (fromDom !== null) {
-    console.log("Extracted via DOM selector");
+    console.log(`Extracted via DOM selector: parsed £${fromDom}`);
     return fromDom;
   }
 
-  // Strategy 3: search the full page text for a "£X,XXX raised" pattern
+  // Strategy 4: search the full page text for a "£X,XXX raised" pattern or
+  // a "Total £X,XXX" pattern in the Donation Summary section.
   const pageText = await page.evaluate(() => document.body.innerText);
   const fromText = parseRaisedFromText(pageText);
   if (fromText !== null) {
-    console.log("Extracted via page text pattern");
+    console.log(`Extracted via page text pattern: parsed £${fromText}`);
     return fromText;
   }
 
@@ -192,19 +247,58 @@ export function parseRaisedFromText(text) {
   // JustGiving renders the figure either as "£1,234 raised" or, in some
   // layouts, as "raised of £2,000". Try the amount-then-"raised" order first so
   // we do not accidentally pick up the target amount.
+  // Also match the "Donation summary" section format: "Total\n£166.00"
   const patterns = [
     /£\s*([\d,]+(?:\.\d{1,2})?)\s*raised/i,
     /raised[^£\d]*£\s*([\d,]+(?:\.\d{1,2})?)/i,
+    /Total\s*£([\d,]+\.\d{2})/,
   ];
 
   for (const pattern of patterns) {
     const match = text.match(pattern);
     if (match) {
+      const matched = match[0];
       const v = Number(match[1].replace(/,/g, ""));
       if (Number.isFinite(v) && v >= 0) {
+        console.log(
+          `Page text match (${pattern.toString()}): matched text "${matched}", parsed £${v}`,
+        );
         return v;
       }
     }
+  }
+
+  return null;
+}
+
+async function fetchCurrentTotal() {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const { data } = await supabase
+    .from("settings")
+    .select("justgiving_total_raised")
+    .not("justgiving_page_slug", "is", null)
+    .limit(1);
+
+  const raw = data?.[0]?.justgiving_total_raised;
+  if (raw === null || raw === undefined) return null;
+  const v = Number(raw);
+  return Number.isFinite(v) ? v : null;
+}
+
+function checkSanity(value, previous) {
+  if (value <= 0) {
+    return `extracted value £${value} is zero or negative`;
+  }
+
+  if (
+    previous !== null &&
+    previous > 0 &&
+    value > previous * SANITY_CHECK_MULTIPLIER
+  ) {
+    return `extracted value £${value} is more than ${SANITY_CHECK_MULTIPLIER}x the previous value £${previous}`;
   }
 
   return null;
