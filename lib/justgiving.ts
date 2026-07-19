@@ -85,7 +85,7 @@ async function getPageSlug() {
   const supabase = createSupabaseClient();
 
   if (!supabase) {
-    return null;
+    return HARDCODED_PAGE_SLUG;
   }
 
   const { data } = await supabase
