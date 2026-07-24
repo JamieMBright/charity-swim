@@ -2,8 +2,8 @@ name: Scrape JustGiving
 
 on:
   schedule:
-    # Every 10 minutes
-    - cron: "*/10 * * * *"
+    # Twice a day, at 06:00 and 18:00 UTC
+    - cron: "0 6,18 * * *"
   workflow_dispatch:
 
 jobs:
