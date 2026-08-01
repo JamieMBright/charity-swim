@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { UpdateForm } from "@/components/update-form";
-import { getProgressData } from "@/lib/progress";
+import { getProgressData } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 

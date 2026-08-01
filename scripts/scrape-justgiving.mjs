@@ -1,28 +1,22 @@
 #!/usr/bin/env node
 /**
  * Scrapes the JustGiving fundraising page with Playwright and writes the
- * total raised figure back to the Supabase `settings` table.
+ * total raised figure back to `data/settings.json`, which the site reads.
  *
- * Required environment variables:
- *   SUPABASE_URL            – Supabase project URL
- *   SUPABASE_SERVICE_ROLE_KEY – Service-role key (bypasses RLS for the update)
- *   JUSTGIVING_PAGE_SLUG    – e.g. "karen-elaine-22-miles" or the full URL
+ * Optional environment variables:
+ *   JUSTGIVING_PAGE_SLUG – e.g. "karen-elaine-22-miles" or the full URL
+ *                          (defaults to the slug stored in data/settings.json)
  */
 
+import { readFile, writeFile } from "node:fs/promises";
 import { chromium } from "playwright";
-import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = sanitiseSupabaseUrl(process.env.SUPABASE_URL);
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SETTINGS_PATH = new URL("../data/settings.json", import.meta.url);
+const settings = JSON.parse(await readFile(SETTINGS_PATH, "utf8"));
 const PAGE_SLUG =
-  process.env.JUSTGIVING_PAGE_SLUG ?? "karen-elaine-22-miles";
-
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error(
-    "Missing required env vars: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY",
-  );
-  process.exit(1);
-}
+  process.env.JUSTGIVING_PAGE_SLUG ??
+  settings.justGivingPageSlug ??
+  "karen-elaine-22-miles";
 
 const SANITY_CHECK_MULTIPLIER = 10;
 
@@ -55,7 +49,7 @@ try {
     })
     .catch(() => {});
 
-  const previousTotal = await fetchCurrentTotal();
+  const previousTotal = readCurrentTotal();
   console.log(
     `Previous stored total: ${previousTotal !== null ? `£${previousTotal}` : "(none)"}`,
   );
@@ -77,9 +71,12 @@ try {
     process.exit(1);
   }
 
-  await writeToSupabase(totalRaised);
-
-  console.log("Supabase updated successfully.");
+  if (previousTotal === totalRaised) {
+    console.log("Total is unchanged; leaving data/settings.json alone.");
+  } else {
+    await writeTotal(totalRaised);
+    console.log("data/settings.json updated successfully.");
+  }
 } finally {
   await browser.close();
 }
@@ -271,24 +268,11 @@ export function parseRaisedFromText(text) {
   return null;
 }
 
-async function fetchCurrentTotal() {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+function readCurrentTotal() {
+  const raw = settings.justGivingTotalRaised;
 
-  const { data, error } = await supabase
-    .from("settings")
-    .select("justgiving_total_raised")
-    .not("justgiving_page_slug", "is", null)
-    .limit(1);
-
-  if (error) {
-    console.warn(`Could not read previous total from Supabase: ${error.message}`);
-    return null;
-  }
-
-  const raw = data?.[0]?.justgiving_total_raised;
   if (raw === null || raw === undefined) return null;
+
   const v = Number(raw);
   return Number.isFinite(v) ? v : null;
 }
@@ -309,44 +293,14 @@ function checkSanity(value, previous) {
   return null;
 }
 
-async function writeToSupabase(totalRaised) {
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+async function writeTotal(totalRaised) {
+  const next = {
+    ...settings,
+    justGivingTotalRaised: totalRaised,
+    justGivingUpdatedAt: new Date().toISOString(),
+  };
 
-  const { data, error } = await supabase
-    .from("settings")
-    .update({ justgiving_total_raised: totalRaised })
-    .not("justgiving_page_slug", "is", null)
-    .select("justgiving_page_slug");
-
-  if (error) {
-    throw new Error(`Supabase update failed: ${error.message}`);
-  }
-
-  if (!data || data.length === 0) {
-    throw new Error(
-      "Supabase update matched no rows; ensure a settings row exists.",
-    );
-  }
-}
-
-function sanitiseSupabaseUrl(value) {
-  if (!value) {
-    return value;
-  }
-
-  // supabase-js appends `/rest/v1` itself, so the configured URL must be the
-  // bare project URL. Trailing slashes or an accidental `/rest/v1` suffix
-  // produce an extra path segment and PostgREST rejects it with
-  // "Invalid path specified in request URL" (PGRST125).
-  let cleaned = value.trim().replace(/\/+$/, "");
-
-  if (/\/rest\/v1$/.test(cleaned)) {
-    cleaned = cleaned.replace(/\/rest\/v1$/, "").replace(/\/+$/, "");
-  }
-
-  return cleaned;
+  await writeFile(SETTINGS_PATH, `${JSON.stringify(next, null, 2)}\n`, "utf8");
 }
 
 function normaliseSlug(value) {
