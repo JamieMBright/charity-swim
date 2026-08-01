@@ -1,6 +1,7 @@
 import { ChannelMap } from "@/components/channel-map";
 import { getJustGivingTotal } from "@/lib/justgiving";
-import { getProgressData, getProgressPercent } from "@/lib/progress";
+import { getProgressData } from "@/lib/data";
+import { getProgressPercent } from "@/lib/progress";
 
 export const dynamic = "force-dynamic";
 

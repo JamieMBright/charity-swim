@@ -1,10 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
 import {
   convertToMiles,
-  createSupabaseClient,
   formatMiles,
   getProgressPercent,
 } from "@/lib/progress";
@@ -25,8 +24,8 @@ export function UpdateForm({
   initialTotalMiles,
   targetMiles,
 }: UpdateFormProps) {
-  const supabase = useMemo(() => createSupabaseClient(), []);
   const [distance, setDistance] = useState("");
+  const [password, setPassword] = useState("");
   const [unit, setUnit] = useState<Unit>("metres");
   const [poolLength, setPoolLength] = useState<"25" | "50">("25");
   const [swimmer, setSwimmer] = useState<Swimmer>("karen");
@@ -46,8 +45,8 @@ export function UpdateForm({
     setMessage(null);
     setErrorMessage(null);
 
-    if (!supabase) {
-      setErrorMessage("Add your Supabase URL and anon key before using this form.");
+    if (!password) {
+      setErrorMessage("Enter the form password.");
       return;
     }
 
@@ -58,39 +57,42 @@ export function UpdateForm({
 
     setIsSubmitting(true);
 
-    const distanceMiles = convertToMiles(numericDistance, unit, Number(poolLength));
-
     try {
-      const { error } = await supabase.from("swim_log").insert({
-        date,
-        distance_miles: distanceMiles,
-        swimmer_name: swimmer,
+      const response = await fetch("/api/swim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          password,
+          swimmer,
+          date,
+          distance: numericDistance,
+          unit,
+          poolLength: Number(poolLength),
+        }),
       });
 
-      if (error) {
-        throw error;
+      const payload = (await response.json()) as {
+        totalMiles?: number;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        setErrorMessage(payload.error ?? "The swim could not be saved.");
+        return;
       }
 
-      const { data, error: refreshError } = await supabase
-        .from("swim_log")
-        .select("distance_miles");
+      const nextTotal = Number(payload.totalMiles);
 
-      if (refreshError) {
-        throw refreshError;
+      if (Number.isFinite(nextTotal)) {
+        setCurrentTotal(nextTotal);
       }
 
-      const nextTotal = (data ?? []).reduce(
-        (total, row) => total + Number(row.distance_miles ?? 0),
-        0,
-      );
-
-      setCurrentTotal(nextTotal);
       setDistance("");
       setMessage(
-        `Saved ${capitalize(swimmer)}'s ${numericDistance} ${unit} for ${date}. Total progress is now ${formatMiles(nextTotal)} miles.`,
+        `Saved ${capitalize(swimmer)}'s ${numericDistance} ${unit} for ${date}. Total progress is now ${formatMiles(Number.isFinite(nextTotal) ? nextTotal : currentTotal)} miles. It will take a few minutes to show up on the public page.`,
       );
     } catch {
-      setErrorMessage("The swim could not be saved. Please check the table policies and try again.");
+      setErrorMessage("The swim could not be saved. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -166,6 +168,18 @@ export function UpdateForm({
         </div>
 
         <label className="block space-y-2">
+          <span className="text-sm font-medium text-slate-700">Password</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-900 outline-none transition focus:border-sky-400"
+            autoComplete="current-password"
+            required
+          />
+        </label>
+
+        <label className="block space-y-2">
           <span className="text-sm font-medium text-slate-700">Date</span>
           <input
             type="date"
@@ -178,6 +192,11 @@ export function UpdateForm({
 
         <p className="rounded-2xl bg-sky-50 px-4 py-3 text-sm text-slate-600">
           This entry will count as <span className="font-semibold text-slate-900">{formatMiles(convertedMiles)} miles</span> on the public visual.
+        </p>
+
+        <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-slate-600">
+          Saved swims take a few minutes to appear on the public page. The total
+          above updates straight away, so there is no need to submit again.
         </p>
 
         <button

@@ -10,7 +10,7 @@ jobs:
   scrape:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -18,15 +18,25 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install Playwright and Supabase client
-        run: npm install playwright @supabase/supabase-js
+      - name: Install Playwright
+        run: npm install playwright
 
       - name: Install Chromium
         run: npx playwright install chromium --with-deps
 
-      - name: Scrape JustGiving and update Supabase
+      - name: Scrape JustGiving
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          JUSTGIVING_PAGE_SLUG: ${{ vars.JUSTGIVING_PAGE_SLUG || 'karen-elaine-22-miles' }}
+          JUSTGIVING_PAGE_SLUG: ${{ vars.JUSTGIVING_PAGE_SLUG }}
         run: node scripts/scrape-justgiving.mjs
+
+      - name: Commit updated total
+        run: |
+          if git diff --quiet -- data/settings.json; then
+            echo "No change to data/settings.json; nothing to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/settings.json
+          git commit -m "Update JustGiving total"
+          git push
