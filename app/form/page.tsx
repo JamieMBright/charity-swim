@@ -34,6 +34,9 @@ export default async function UpdatePage() {
             Choose Karen or Elaine, then add metres or lengths. Length entries are
             converted using the selected pool length and saved in miles for the visual.
           </p>
+          <p className="mt-3 text-slate-600">
+            Saved swims take a few minutes to show up on the public page.
+          </p>
         </section>
 
         <UpdateForm

@@ -89,7 +89,7 @@ export function UpdateForm({
 
       setDistance("");
       setMessage(
-        `Saved ${capitalize(swimmer)}'s ${numericDistance} ${unit} for ${date}. Total progress is now ${formatMiles(Number.isFinite(nextTotal) ? nextTotal : currentTotal)} miles. The public page updates within about a minute.`,
+        `Saved ${capitalize(swimmer)}'s ${numericDistance} ${unit} for ${date}. Total progress is now ${formatMiles(Number.isFinite(nextTotal) ? nextTotal : currentTotal)} miles. It will take a few minutes to show up on the public page.`,
       );
     } catch {
       setErrorMessage("The swim could not be saved. Please try again.");
@@ -192,6 +192,11 @@ export function UpdateForm({
 
         <p className="rounded-2xl bg-sky-50 px-4 py-3 text-sm text-slate-600">
           This entry will count as <span className="font-semibold text-slate-900">{formatMiles(convertedMiles)} miles</span> on the public visual.
+        </p>
+
+        <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-slate-600">
+          Saved swims take a few minutes to appear on the public page. The total
+          above updates straight away, so there is no need to submit again.
         </p>
 
         <button
