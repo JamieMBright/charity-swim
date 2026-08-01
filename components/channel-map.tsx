@@ -15,26 +15,31 @@ type ChannelMapProps = {
   targetMoney: number;
 };
 
-function Swimmer({ color, flip = false }: { color: string; flip?: boolean }) {
+function Swimmer({ color }: { color: string }) {
   return (
-    <svg
-      viewBox="0 0 150 76"
-      className={`h-full w-full overflow-visible drop-shadow-[0_5px_4px_rgba(2,43,67,0.35)] ${flip ? "-scale-x-100" : ""}`}
-      aria-hidden="true"
-    >
-      <g fill="none" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M8 57c15-7 27-7 41 0s27 7 42 0 29-7 48 1" stroke="#d9f9ff" strokeWidth="4" opacity=".8" />
-        <path d="M52 43c20-12 42-13 62-3" stroke={color} strokeWidth="15" />
-        <path d="m65 44-24 14-25-2" stroke="#eeb18d" strokeWidth="8" />
-        <path d="M81 37 61 19 35 13" stroke="#eeb18d" strokeWidth="8" />
-        <path d="M112 41 132 30" stroke="#eeb18d" strokeWidth="7" />
-        <path d="m110 45 27 9" stroke="#eeb18d" strokeWidth="7" />
-        <circle cx="119" cy="32" r="12" fill="#eeb18d" stroke="none" />
-        <path d="M107 29c4-11 19-14 27-4l-3 8c-7-5-15-6-24-4Z" fill={color} stroke="none" />
-        <path d="m123 31 10 1" stroke="#153f59" strokeWidth="3" />
-        <path d="M16 20c8-5 15-5 23 0M2 34c7-4 13-4 20 0" stroke="#d9f9ff" strokeWidth="3" opacity=".75" />
-      </g>
-    </svg>
+    <g fill="none" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 57c15-7 27-7 41 0s27 7 42 0 29-7 48 1" stroke="#d9f9ff" strokeWidth="4" opacity=".8" />
+      <path d="M52 43c20-12 42-13 62-3" stroke={color} strokeWidth="15" />
+      <path d="m65 44-24 14-25-2" stroke="#eeb18d" strokeWidth="8" />
+      <path d="M81 37 61 19 35 13" stroke="#eeb18d" strokeWidth="8" />
+      <path d="M112 41 132 30" stroke="#eeb18d" strokeWidth="7" />
+      <path d="m110 45 27 9" stroke="#eeb18d" strokeWidth="7" />
+      <circle cx="119" cy="32" r="12" fill="#eeb18d" stroke="none" />
+      <path d="M107 29c4-11 19-14 27-4l-3 8c-7-5-15-6-24-4Z" fill={color} stroke="none" />
+      <path d="m123 31 10 1" stroke="#153f59" strokeWidth="3" />
+      <path d="M16 20c8-5 15-5 23 0M2 34c7-4 13-4 20 0" stroke="#d9f9ff" strokeWidth="3" opacity=".75" />
+    </g>
+  );
+}
+
+function SupportBoat() {
+  return (
+    <g>
+      <path d="M-62 30h138l-18 28H-45Z" fill="#f8fafc" />
+      <path d="M-39 0h70l25 30h-107Z" fill="#f8fafc" />
+      <path d="M-23 7h18v13h-18Zm29 0h18v13H6Z" fill="#167ca3" />
+      <rect x="31" y="-22" width="8" height="31" rx="2" fill="#e65e4a" />
+    </g>
   );
 }
 
@@ -60,7 +65,7 @@ export function ChannelMap({
 }: ChannelMapProps) {
   const safeProgress = Math.min(100, Math.max(0, progressPercent));
   const moneyPercent = getProgressPercent(totalRaised ?? 0, targetMoney);
-  const swimmerTop = `${31 + safeProgress * 0.4}%`;
+  const swimmerTop = `${34 + safeProgress * 0.28}%`;
 
   return (
     <section
@@ -110,12 +115,6 @@ export function ChannelMap({
         <path d="M0 801c69-13 123-10 177 7 42 13 80 12 118 1 45-14 88-14 135-5v16H0Z" fill="#5b8a51" />
 
         <path d="M215 288C178 380 251 445 213 534s31 137 2 203" fill="none" stroke="#d9f9ff" strokeDasharray="3 15" strokeLinecap="round" strokeWidth="5" opacity=".78" />
-        <g transform="translate(345 328) scale(.55)">
-          <path d="M-62 30h138l-18 28H-45Z" fill="#f8fafc" />
-          <path d="M-39 0h70l25 30h-107Z" fill="#f8fafc" />
-          <path d="M-23 7h18v13h-18Zm29 0h18v13H6Z" fill="#167ca3" />
-          <rect x="31" y="-22" width="8" height="31" rx="2" fill="#e65e4a" />
-        </g>
       </svg>
 
       <header className="absolute inset-x-0 top-0 z-10 bg-[linear-gradient(180deg,rgba(3,42,64,0.96)_0%,rgba(3,53,78,0.9)_75%,transparent_100%)] px-5 pb-12 pt-6 text-white sm:px-7 sm:pt-7">
@@ -150,16 +149,25 @@ export function ChannelMap({
       </div>
 
       <div
-        className="absolute left-1/2 z-20 h-24 w-44 -translate-x-1/2 transition-[top] duration-700"
+        className="absolute left-1/2 z-20 h-[236px] w-[170px] -translate-x-1/2 transition-[top] duration-700"
         style={{ top: swimmerTop }}
       >
         <div className="channel-swimmers relative h-full w-full">
-          <div className="absolute left-0 top-0 h-[4.75rem] w-[9.4rem] -rotate-12">
-            <Swimmer color={swimmers[0]?.color ?? "#f25f6b"} />
-          </div>
-          <div className="absolute -right-1 bottom-0 h-[4.75rem] w-[9.4rem] rotate-[10deg]">
-            <Swimmer color={swimmers[1]?.color ?? "#f4a53d"} flip />
-          </div>
+          <svg
+            viewBox="0 0 170 236"
+            className="h-full w-full overflow-visible drop-shadow-[0_5px_4px_rgba(2,43,67,0.35)]"
+            aria-hidden="true"
+          >
+            <g transform="translate(123 8) rotate(90) scale(.58)">
+              <Swimmer color={swimmers[1]?.color ?? "#f4a53d"} />
+            </g>
+            <g transform="translate(91 29) rotate(90) scale(.58)">
+              <Swimmer color={swimmers[0]?.color ?? "#f25f6b"} />
+            </g>
+            <g transform="translate(79 180) scale(.85)">
+              <SupportBoat />
+            </g>
+          </svg>
         </div>
       </div>
 
