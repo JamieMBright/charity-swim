@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import {
@@ -73,11 +73,14 @@ function isAuthorized(value: unknown) {
     return false;
   }
 
-  // Hash both sides so the comparison is constant time regardless of length.
-  const expectedDigest = createHash("sha256").update(expected).digest();
-  const providedDigest = createHash("sha256").update(value).digest();
+  const expectedBytes = Buffer.from(expected, "utf8");
+  const providedBytes = Buffer.from(value, "utf8");
 
-  return timingSafeEqual(expectedDigest, providedDigest);
+  if (expectedBytes.length !== providedBytes.length) {
+    return false;
+  }
+
+  return timingSafeEqual(expectedBytes, providedBytes);
 }
 
 function buildEntry(
