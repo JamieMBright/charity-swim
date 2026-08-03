@@ -20,11 +20,21 @@ export function convertToMiles(
 }
 
 export function getProgressPercent(current: number, target: number) {
+  return Math.min(100, getUncappedProgressPercent(current, target));
+}
+
+export function getUncappedProgressPercent(current: number, target: number) {
   if (!Number.isFinite(target) || target <= 0) {
     return 0;
   }
 
-  return Math.min(100, Math.max(0, (current / target) * 100));
+  const percent = (current / target) * 100;
+
+  if (!Number.isFinite(percent)) {
+    return 0;
+  }
+
+  return Math.max(0, percent);
 }
 
 export function formatMiles(value: number) {
