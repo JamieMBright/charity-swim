@@ -16,14 +16,24 @@ import { chromium } from "playwright";
 
 const SETTINGS_PATH = new URL("../data/settings.json", import.meta.url);
 const settings = JSON.parse(await readFile(SETTINGS_PATH, "utf8"));
-const PAGE_SLUG =
-  process.env.JUSTGIVING_PAGE_SLUG ??
-  settings.justGivingPageSlug ??
-  "karen-elaine-22-miles";
+// An unset GitHub Actions variable is passed through as an empty string rather
+// than being absent, so blank values must fall through to the next candidate.
+const PAGE_SLUG = firstNonBlank(
+  process.env.JUSTGIVING_PAGE_SLUG,
+  settings.justGivingPageSlug,
+  "karen-elaine-22-miles",
+);
 
 const SANITY_CHECK_MULTIPLIER = 10;
 
 const slug = normaliseSlug(PAGE_SLUG);
+
+if (!slug) {
+  console.error(
+    "No JustGiving page slug configured. Set JUSTGIVING_PAGE_SLUG or justGivingPageSlug in data/settings.json.",
+  );
+  process.exit(1);
+}
 // JustGiving serves fundraising pages from a couple of paths and redirects
 // between them. Trying each in turn means a change to the canonical path (or a
 // transient block on one of them) no longer breaks the scrape.
@@ -429,7 +439,8 @@ async function writeTotal(totalRaised) {
 }
 
 function normaliseSlug(value) {
-  const trimmed = value.trim();
+  const trimmed = String(value ?? "").trim();
+  if (!trimmed) return "";
   try {
     const url = new URL(trimmed);
     const segments = url.pathname.split("/").filter(Boolean);
@@ -437,4 +448,11 @@ function normaliseSlug(value) {
   } catch {
     return trimmed.replace(/^\/+/, "");
   }
+}
+
+function firstNonBlank(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim() !== "") return value;
+  }
+  return "";
 }
