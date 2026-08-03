@@ -130,7 +130,9 @@ It is intentionally not linked from the public page and is excluded from indexin
 Run it manually from the **Actions** tab, or locally:
 
 ```bash
-npm install playwright
+npm install playwright@1.62.1
 npx playwright install chromium
 node scripts/scrape-justgiving.mjs
 ```
+
+The Playwright version is pinned in the workflow so a new release cannot change browser behaviour underneath the job. The scraper tries the `/page`, `/fundraising` and `/crowdfunding` URLs for the slug in turn, and when it cannot find a total it logs the final URL, page title and a page text excerpt, so the workflow log shows whether the page moved, failed to render, or was served a bot challenge.

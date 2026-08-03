@@ -21,40 +21,45 @@ const PAGE_SLUG =
 const SANITY_CHECK_MULTIPLIER = 10;
 
 const slug = normaliseSlug(PAGE_SLUG);
-const pageUrl = `https://www.justgiving.com/page/${encodeURIComponent(slug)}`;
+const pageUrls = buildCandidateUrls(slug);
 
-console.log(`Scraping: ${pageUrl}`);
+console.log(`Scraping: ${pageUrls.join(", ")}`);
 
-const browser = await chromium.launch({ headless: true });
+// `channel: "chromium"` runs the full headless browser rather than the older
+// headless shell, which JustGiving's bot protection is far more likely to
+// serve a challenge page to.
+const browser = await chromium.launch({
+  headless: true,
+  channel: "chromium",
+  args: ["--disable-blink-features=AutomationControlled"],
+});
 
 try {
   const context = await browser.newContext({
     userAgent:
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    locale: "en-GB",
+    timezoneId: "Europe/London",
+    viewport: { width: 1280, height: 900 },
+    extraHTTPHeaders: { "Accept-Language": "en-GB,en;q=0.9" },
+  });
+  // `navigator.webdriver` is the cheapest automation tell to remove.
+  await context.addInitScript(() => {
+    Object.defineProperty(navigator, "webdriver", { get: () => undefined });
   });
   const page = await context.newPage();
-
-  await gotoWithRetry(page, pageUrl);
-
-  // JustGiving is a client-rendered app, so the total is not present at
-  // `domcontentloaded`. Give the network a chance to settle and wait for a
-  // monetary figure to appear before scraping. Both waits are best-effort so a
-  // slow-but-present page still falls through to extraction.
-  await page
-    .waitForLoadState("networkidle", { timeout: 30_000 })
-    .catch(() => {});
-  await page
-    .waitForFunction(() => /£\s*[\d,]/.test(document.body?.innerText ?? ""), {
-      timeout: 30_000,
-    })
-    .catch(() => {});
 
   const previousTotal = readCurrentTotal();
   console.log(
     `Previous stored total: ${previousTotal !== null ? `£${previousTotal}` : "(none)"}`,
   );
 
-  const totalRaised = await extractTotalRaised(page);
+  let totalRaised = null;
+
+  for (const pageUrl of pageUrls) {
+    totalRaised = await scrapePage(page, pageUrl);
+    if (totalRaised !== null) break;
+  }
 
   if (totalRaised === null) {
     console.error("Could not extract a total raised figure from the page.");
@@ -83,13 +88,73 @@ try {
 
 // ---------------------------------------------------------------------------
 
+async function scrapePage(page, pageUrl) {
+  console.log(`Trying ${pageUrl}`);
+
+  let response;
+  try {
+    response = await gotoWithRetry(page, pageUrl);
+  } catch (error) {
+    console.warn(`Could not load ${pageUrl}: ${error.message}`);
+    return null;
+  }
+
+  const status = response?.status() ?? "unknown";
+  console.log(`HTTP status: ${status}`);
+
+  if (response && response.status() === 404) {
+    console.warn(
+      `${pageUrl} returned 404; trying the next URL if there is one.`,
+    );
+    return null;
+  }
+
+  // JustGiving is a client-rendered app, so the total is not present at
+  // `domcontentloaded`. Give the network a chance to settle and wait for a
+  // monetary figure to appear before scraping. Both waits are best-effort so a
+  // slow-but-present page still falls through to extraction.
+  await page
+    .waitForLoadState("networkidle", { timeout: 30_000 })
+    .catch(() => {});
+  await page
+    .waitForFunction(() => /£\s*[\d,]/.test(document.body?.innerText ?? ""), {
+      timeout: 30_000,
+    })
+    .catch(() => {});
+
+  const totalRaised = await extractTotalRaised(page);
+
+  if (totalRaised === null) {
+    await logPageDiagnostics(page);
+  }
+
+  return totalRaised;
+}
+
+// Logged whenever extraction fails so the workflow run says *why* — a bot
+// challenge, a moved page and a rendering change all look identical otherwise.
+async function logPageDiagnostics(page) {
+  try {
+    const title = await page.title();
+    const bodyText = await page.evaluate(() => document.body?.innerText ?? "");
+    const excerpt = bodyText.replace(/\s+/g, " ").trim().slice(0, 500);
+    console.error(`Diagnostics — final URL: ${page.url()}`);
+    console.error(`Diagnostics — page title: ${title}`);
+    console.error(`Diagnostics — body text excerpt: ${excerpt || "(empty)"}`);
+  } catch (error) {
+    console.error(`Could not collect page diagnostics: ${error.message}`);
+  }
+}
+
 async function gotoWithRetry(page, url, attempts = 3) {
   let lastError;
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      return;
+      return await page.goto(url, {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000,
+      });
     } catch (error) {
       lastError = error;
       console.warn(
@@ -138,7 +203,7 @@ async function extractTotalRaised(page) {
               ? (raw.value ?? raw.amount ?? raw.total)
               : raw;
           const v = Number(candidate);
-          if (Number.isFinite(v) && v >= 0) return v;
+          if (Number.isFinite(v) && v > 0) return v;
         }
       }
 
@@ -194,7 +259,7 @@ async function extractTotalRaised(page) {
     console.log(
       `Extracted via "Total" label DOM traversal: matched text "${fromTotalLabel.text}", parsed £${v}`,
     );
-    if (Number.isFinite(v) && v >= 0) return v;
+    if (Number.isFinite(v) && v > 0) return v;
   }
 
   // Strategy 3: look for a monetary amount in prominent headings/spans
@@ -214,7 +279,7 @@ async function extractTotalRaised(page) {
         const match = text.match(/[\d,]+(?:\.\d{1,2})?/);
         if (match) {
           const v = Number(match[0].replace(/,/g, ""));
-          if (Number.isFinite(v) && v >= 0) return v;
+          if (Number.isFinite(v) && v > 0) return v;
         }
       }
     }
@@ -233,6 +298,32 @@ async function extractTotalRaised(page) {
   if (fromText !== null) {
     console.log(`Extracted via page text pattern: parsed £${fromText}`);
     return fromText;
+  }
+
+  // Strategy 5: JustGiving's App Router pages stream their data into inline
+  // `self.__next_f.push(...)` script chunks rather than `__NEXT_DATA__`, so as a
+  // last resort scan the raw HTML for a total-raised key.
+  const html = await page.content();
+  const fromHtml = parseRaisedFromHtml(html);
+  if (fromHtml !== null) {
+    console.log(`Extracted via embedded page data: parsed £${fromHtml}`);
+    return fromHtml;
+  }
+
+  return null;
+}
+
+export function parseRaisedFromHtml(html) {
+  if (typeof html !== "string") return null;
+
+  // Keys appear as `"totalRaised":123.45` in plain JSON and as
+  // `\"totalRaised\":\"123.45\"` inside escaped streaming payloads.
+  const pattern =
+    /\\?"(?:totalRaised|totalRaisedOnline|amountRaised|raisedAmount|donationsTotal|grandTotalRaisedExcludingGiftAid)\\?"\s*:\s*(?:\{[^{}]*?\\?"(?:value|amount|total)\\?"\s*:\s*)?\\?"?(\d+(?:\.\d+)?)/gi;
+
+  for (const match of html.matchAll(pattern)) {
+    const v = Number(match[1]);
+    if (Number.isFinite(v) && v > 0) return v;
   }
 
   return null;
@@ -256,7 +347,7 @@ export function parseRaisedFromText(text) {
     if (match) {
       const matched = match[0];
       const v = Number(match[1].replace(/,/g, ""));
-      if (Number.isFinite(v) && v >= 0) {
+      if (Number.isFinite(v) && v > 0) {
         console.log(
           `Page text match (${pattern.toString()}): matched text "${matched}", parsed £${v}`,
         );
@@ -312,4 +403,13 @@ function normaliseSlug(value) {
   } catch {
     return trimmed.replace(/^\/+/, "");
   }
+}
+
+// JustGiving serves the same fundraiser under several path prefixes and has
+// moved pages between them before, so try each in turn.
+export function buildCandidateUrls(pageSlug) {
+  const encoded = encodeURIComponent(pageSlug);
+  return ["page", "fundraising", "crowdfunding"].map(
+    (prefix) => `https://www.justgiving.com/${prefix}/${encoded}`,
+  );
 }
