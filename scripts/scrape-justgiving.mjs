@@ -6,9 +6,12 @@
  * Optional environment variables:
  *   JUSTGIVING_PAGE_SLUG – e.g. "karen-elaine-22-miles" or the full URL
  *                          (defaults to the slug stored in data/settings.json)
+ *   SCRAPE_DEBUG_DIR     – directory to write the page HTML/screenshot to when
+ *                          extraction fails, for post-mortem debugging
  */
 
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { chromium } from "playwright";
 
 const SETTINGS_PATH = new URL("../data/settings.json", import.meta.url);
@@ -21,64 +24,101 @@ const PAGE_SLUG =
 const SANITY_CHECK_MULTIPLIER = 10;
 
 const slug = normaliseSlug(PAGE_SLUG);
-const pageUrl = `https://www.justgiving.com/page/${encodeURIComponent(slug)}`;
+// JustGiving serves fundraising pages from a couple of paths and redirects
+// between them. Trying each in turn means a change to the canonical path (or a
+// transient block on one of them) no longer breaks the scrape.
+const candidateUrls = [
+  `https://www.justgiving.com/page/${encodeURIComponent(slug)}`,
+  `https://www.justgiving.com/fundraising/${encodeURIComponent(slug)}`,
+];
 
-console.log(`Scraping: ${pageUrl}`);
+const previousTotal = readCurrentTotal();
+console.log(
+  `Previous stored total: ${previousTotal !== null ? `£${previousTotal}` : "(none)"}`,
+);
 
-const browser = await chromium.launch({ headless: true });
+// `headless: true` uses Chromium's headless shell, which is easy to fingerprint
+// and is increasingly served bot-challenge pages. The "chromium" channel runs
+// the regular browser build in headless mode instead.
+const browser = await chromium.launch({ channel: "chromium", headless: true });
+
+let totalRaised = null;
 
 try {
   const context = await browser.newContext({
     userAgent:
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    locale: "en-GB",
+    timezoneId: "Europe/London",
+    viewport: { width: 1280, height: 900 },
+    extraHTTPHeaders: { "Accept-Language": "en-GB,en;q=0.9" },
   });
   const page = await context.newPage();
 
-  await gotoWithRetry(page, pageUrl);
+  for (const pageUrl of candidateUrls) {
+    console.log(`Scraping: ${pageUrl}`);
 
-  // JustGiving is a client-rendered app, so the total is not present at
-  // `domcontentloaded`. Give the network a chance to settle and wait for a
-  // monetary figure to appear before scraping. Both waits are best-effort so a
-  // slow-but-present page still falls through to extraction.
-  await page
-    .waitForLoadState("networkidle", { timeout: 30_000 })
-    .catch(() => {});
-  await page
-    .waitForFunction(() => /£\s*[\d,]/.test(document.body?.innerText ?? ""), {
-      timeout: 30_000,
-    })
-    .catch(() => {});
+    let response;
+    try {
+      response = await gotoWithRetry(page, pageUrl);
+    } catch (error) {
+      console.warn(`Navigation to ${pageUrl} failed: ${error.message}`);
+      continue;
+    }
 
-  const previousTotal = readCurrentTotal();
-  console.log(
-    `Previous stored total: ${previousTotal !== null ? `£${previousTotal}` : "(none)"}`,
-  );
-
-  const totalRaised = await extractTotalRaised(page);
-
-  if (totalRaised === null) {
-    console.error("Could not extract a total raised figure from the page.");
-    process.exit(1);
-  }
-
-  console.log(`Total raised: £${totalRaised}`);
-
-  const sanityError = checkSanity(totalRaised, previousTotal);
-  if (sanityError) {
-    console.error(
-      `Sanity check failed — ${sanityError}. Keeping last known value (£${previousTotal ?? "unknown"}).`,
+    console.log(
+      `Navigation finished: HTTP ${response?.status() ?? "unknown"} at ${page.url()}`,
     );
-    process.exit(1);
-  }
 
-  if (previousTotal === totalRaised) {
-    console.log("Total is unchanged; leaving data/settings.json alone.");
-  } else {
-    await writeTotal(totalRaised);
-    console.log("data/settings.json updated successfully.");
+    // JustGiving is a client-rendered app, so the total is not present at
+    // `domcontentloaded`. Give the network a chance to settle and wait for a
+    // monetary figure to appear before scraping. Both waits are best-effort so a
+    // slow-but-present page still falls through to extraction.
+    await page
+      .waitForLoadState("networkidle", { timeout: 30_000 })
+      .catch(() => {});
+    const sawAmount = await page
+      .waitForFunction(() => /£\s*[\d,]/.test(document.body?.innerText ?? ""), {
+        timeout: 30_000,
+      })
+      .then(() => true)
+      .catch(() => false);
+
+    if (!sawAmount) {
+      console.warn("No £ amount appeared on the page within 30s.");
+    }
+
+    totalRaised = await extractTotalRaised(page);
+
+    if (totalRaised !== null) break;
+
+    console.warn(`Could not extract a total from ${pageUrl}.`);
+    await reportPageDiagnostics(page, slug);
   }
 } finally {
   await browser.close();
+}
+
+if (totalRaised === null) {
+  console.error("Could not extract a total raised figure from the page.");
+  process.exit(1);
+}
+
+console.log(`Total raised: £${totalRaised}`);
+
+const sanityError = checkSanity(totalRaised, previousTotal);
+if (sanityError) {
+  console.error(
+    `Sanity check failed — ${sanityError}. Keeping last known value (£${previousTotal ?? "unknown"}).`,
+  );
+  process.exit(1);
+}
+
+if (previousTotal === totalRaised) {
+  console.log("Total is unchanged; leaving data/settings.json alone.");
+} else {
+  await writeTotal(totalRaised);
+  console.log("data/settings.json updated successfully.");
 }
 
 // ---------------------------------------------------------------------------
@@ -88,8 +128,10 @@ async function gotoWithRetry(page, url, attempts = 3) {
 
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
-      return;
+      return await page.goto(url, {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000,
+      });
     } catch (error) {
       lastError = error;
       console.warn(
@@ -102,6 +144,38 @@ async function gotoWithRetry(page, url, attempts = 3) {
   }
 
   throw lastError;
+}
+
+/**
+ * Logs (and optionally saves) enough of the page for a human to work out why
+ * extraction failed — typically a bot-challenge page, a 404 after a slug
+ * change, or a redesign that moved the figure.
+ */
+async function reportPageDiagnostics(page, slug) {
+  const title = await page.title().catch(() => "(unavailable)");
+  const text = await page
+    .evaluate(() => document.body?.innerText ?? "")
+    .catch(() => "");
+
+  console.warn(`Page title: ${title}`);
+  console.warn(
+    `Page text (first 1000 chars):\n${text.slice(0, 1000).trim() || "(empty)"}`,
+  );
+
+  const debugDir = process.env.SCRAPE_DEBUG_DIR;
+  if (!debugDir) return;
+
+  try {
+    await mkdir(debugDir, { recursive: true });
+    // The slug is caller-supplied, so strip anything that is not filename-safe.
+    const safeSlug = slug.replace(/[^a-z0-9-]/gi, "_").slice(0, 60);
+    const base = join(debugDir, `justgiving-${safeSlug}-${Date.now()}`);
+    await writeFile(`${base}.html`, await page.content(), "utf8");
+    await page.screenshot({ path: `${base}.png`, fullPage: true });
+    console.warn(`Saved page HTML and screenshot to ${base}.{html,png}`);
+  } catch (error) {
+    console.warn(`Could not save debug artefacts: ${error.message}`);
+  }
 }
 
 async function extractTotalRaised(page) {
@@ -138,7 +212,9 @@ async function extractTotalRaised(page) {
               ? (raw.value ?? raw.amount ?? raw.total)
               : raw;
           const v = Number(candidate);
-          if (Number.isFinite(v) && v >= 0) return v;
+          // Ignore zero/absent figures so the search continues into sibling
+          // objects rather than settling on an empty placeholder.
+          if (Number.isFinite(v) && v > 0) return v;
         }
       }
 
@@ -158,7 +234,21 @@ async function extractTotalRaised(page) {
     return fromNextData;
   }
 
-  // Strategy 2: find the element containing exactly "Total" (standalone, case-
+  // Strategy 2: scan the raw HTML for the same figures embedded in streamed
+  // script payloads. React server components serialise their data into
+  // `self.__next_f.push([...])` chunks rather than a `__NEXT_DATA__` element,
+  // so the JSON is present but escaped and not parseable as a whole.
+  const html = await page.content();
+  const fromEmbeddedJson = parseTotalFromEmbeddedJson(html);
+
+  if (fromEmbeddedJson !== null) {
+    console.log(
+      `Extracted via embedded script JSON: parsed £${fromEmbeddedJson}`,
+    );
+    return fromEmbeddedJson;
+  }
+
+  // Strategy 3: find the element containing exactly "Total" (standalone, case-
   // sensitive) then look in its parent container for a sibling element whose
   // text contains a £ amount.
   const fromTotalLabel = await page.evaluate(() => {
@@ -197,7 +287,7 @@ async function extractTotalRaised(page) {
     if (Number.isFinite(v) && v >= 0) return v;
   }
 
-  // Strategy 3: look for a monetary amount in prominent headings/spans
+  // Strategy 4: look for a monetary amount in prominent headings/spans
   const fromDom = await page.evaluate(() => {
     const selectors = [
       "[data-testid*='raised']",
@@ -226,13 +316,48 @@ async function extractTotalRaised(page) {
     return fromDom;
   }
 
-  // Strategy 4: search the full page text for a "£X,XXX raised" pattern or
+  // Strategy 5: search the full page text for a "£X,XXX raised" pattern or
   // a "Total £X,XXX" pattern in the Donation Summary section.
   const pageText = await page.evaluate(() => document.body.innerText);
   const fromText = parseRaisedFromText(pageText);
   if (fromText !== null) {
     console.log(`Extracted via page text pattern: parsed £${fromText}`);
     return fromText;
+  }
+
+  return null;
+}
+
+/**
+ * Pulls a raised figure out of JSON embedded in the page's scripts. Handles
+ * both plain (`"totalRaised":166`) and escaped (`\"totalRaised\":{\"value\":166}`)
+ * forms, the latter being how React server component payloads are serialised.
+ */
+export function parseTotalFromEmbeddedJson(html) {
+  if (typeof html !== "string") return null;
+
+  const keys = [
+    "totalRaised",
+    "totalRaisedOnline",
+    "amountRaised",
+    "raisedAmount",
+    "donationsTotal",
+    "grandTotalRaisedExcludingGiftAid",
+  ];
+
+  for (const key of keys) {
+    const pattern = new RegExp(
+      `\\\\?"${key}\\\\?"\\s*:\\s*(?:\\{[^{}]*?\\\\?"(?:value|amount|total)\\\\?"\\s*:\\s*)?"?(\\d+(?:\\.\\d{1,2})?)"?`,
+      "g",
+    );
+
+    for (const match of html.matchAll(pattern)) {
+      const v = Number(match[1]);
+      if (Number.isFinite(v) && v > 0) {
+        console.log(`Embedded JSON match on "${key}": parsed £${v}`);
+        return v;
+      }
+    }
   }
 
   return null;
