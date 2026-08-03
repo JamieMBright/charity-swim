@@ -134,3 +134,5 @@ npm install playwright
 npx playwright install chromium
 node scripts/scrape-justgiving.mjs
 ```
+
+The scraper tries the `/page/` and `/fundraising/` URLs in turn and extracts the total from the page's embedded JSON before falling back to the rendered DOM and page text. When it cannot find a figure it logs the page title and text; set `SCRAPE_DEBUG_DIR` to also save the HTML and a screenshot. The workflow does this automatically and uploads them as the `scrape-debug` artefact on failure.

@@ -27,7 +27,17 @@ jobs:
       - name: Scrape JustGiving
         env:
           JUSTGIVING_PAGE_SLUG: ${{ vars.JUSTGIVING_PAGE_SLUG }}
+          SCRAPE_DEBUG_DIR: ${{ runner.temp }}/scrape-debug
         run: node scripts/scrape-justgiving.mjs
+
+      - name: Upload scrape debug artefacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-debug
+          path: ${{ runner.temp }}/scrape-debug
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Commit updated total
         run: |
