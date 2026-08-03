@@ -1,4 +1,4 @@
-import { formatCurrency, formatMiles, getProgressPercent } from "@/lib/progress";
+import { formatCurrency, formatMiles, getUncappedProgressPercent } from "@/lib/progress";
 
 type SwimmerProgress = {
   name: string;
@@ -64,7 +64,9 @@ export function ChannelMap({
   targetMoney,
 }: ChannelMapProps) {
   const safeProgress = Math.min(100, Math.max(0, progressPercent));
-  const moneyPercent = getProgressPercent(totalRaised ?? 0, targetMoney);
+  const moneyPercent = getUncappedProgressPercent(totalRaised ?? 0, targetMoney);
+  const moneyBarWidth = Math.min(100, moneyPercent);
+  const moneyOverTarget = moneyPercent > 100;
   const swimmerTop = `${34 + safeProgress * 0.28}%`;
 
   return (
@@ -192,10 +194,19 @@ export function ChannelMap({
                 <span className="ml-1 text-xs font-semibold text-cyan-100">of £{formatCurrency(targetMoney)}</span>
               </p>
             </div>
-            <p className="text-lg font-black tabular-nums">{moneyPercent.toFixed(0)}%</p>
+            <p
+              className={`text-lg font-black tabular-nums ${moneyOverTarget ? "text-[#ffd77a]" : ""}`}
+            >
+              {moneyPercent.toFixed(0)}%
+            </p>
           </div>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15">
-            <div className="h-full rounded-full bg-[#f5b746]" style={{ width: `${moneyPercent}%` }} />
+            <div
+              className={`h-full rounded-full ${
+                moneyOverTarget ? "bg-[linear-gradient(90deg,#f5b746_0%,#ffe9a8_100%)]" : "bg-[#f5b746]"
+              }`}
+              style={{ width: `${moneyBarWidth}%` }}
+            />
           </div>
         </div>
       </div>

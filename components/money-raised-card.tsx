@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-import { formatCurrency, getProgressPercent } from "@/lib/progress";
+import { formatCurrency, getUncappedProgressPercent } from "@/lib/progress";
 
 import { ProgressBar } from "./progress-bar";
 
@@ -47,7 +47,7 @@ export function MoneyRaisedCard({ targetMoney }: MoneyRaisedCardProps) {
     };
   }, []);
 
-  const progressValue = getProgressPercent(moneyRaised ?? 0, targetMoney);
+  const progressValue = getUncappedProgressPercent(moneyRaised ?? 0, targetMoney);
 
   return (
     <div className="rounded-[2rem] bg-white p-6 shadow-[0_24px_80px_rgba(34,91,124,0.14)]">
@@ -62,6 +62,9 @@ export function MoneyRaisedCard({ targetMoney }: MoneyRaisedCardProps) {
       <div className="mt-4">
         <ProgressBar value={progressValue} />
       </div>
+      <p className="mt-2 text-sm font-semibold tabular-nums text-slate-600">
+        {progressValue.toFixed(0)}% of target
+      </p>
       <p className="mt-4 text-sm text-slate-500">
         {stale && moneyRaised !== null
           ? "Showing the last cached amount while the JustGiving total refreshes."
