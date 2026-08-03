@@ -19,7 +19,7 @@ jobs:
           node-version: "22"
 
       - name: Install Playwright
-        run: npm install playwright
+        run: npm install playwright@1.62.1
 
       - name: Install Chromium
         run: npx playwright install chromium --with-deps
