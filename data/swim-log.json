@@ -88,5 +88,10 @@
     "swimmer": "karen",
     "date": "2026-08-13",
     "distanceMiles": 0.5903
+  },
+  {
+    "swimmer": "karen",
+    "date": "2026-08-14",
+    "distanceMiles": 0.46603
   }
 ]
